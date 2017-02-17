@@ -124,7 +124,7 @@ impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
     fn generate_asm_code(&self, asm: &mut rustc::hir::InlineAsm, inputs: &Vec<mir::Operand>) {
 		let mut arg_str: String = "".to_string();
 		for (idx, input) in inputs.iter().enumerate() {
-			arg_str.push_str(&format!(" -8@${}", idx));
+			arg_str.push_str(&format!("-8@${}", idx));
 		}
 		let asm_code = Symbol::intern(&format!(r##"
 			990:    nop
@@ -322,7 +322,7 @@ fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                     clobbers: vec![],
                     volatile: true,
                     alignstack: false,
-                    dialect: ast::AsmDialect::Intel,
+                    dialect: ast::AsmDialect::Att,
                     expn_id: NO_EXPANSION 
                 }))
             })),

@@ -11,7 +11,7 @@ fn main() {
     for i in 0..100 {
         println!("{}", i);
         sleep(Duration::from_millis(1000));
-        static_probe!(provider="foo", name="bar"; (a as i64));
+        static_probe!(provider="foo", name="bar"; (i as i64));
     }
 }
 
