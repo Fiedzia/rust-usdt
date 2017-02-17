@@ -1,9 +1,27 @@
-/*
- * TODO:
- *  wrap input params in ( as i64(or whatever is appropriate))
- *
- * */
-
+// High level overview:
+//
+//  There are few steps we do here:
+//
+//  1. register compiler plugin providing static_probe macro.
+//     This will convert probe macros into
+//     unsafe { asm!("..."); } blocks,
+//     inserting MAGIC_ASM_MARK and attribute values into asm text.
+//     Here we also connect expression passed to probe to asm inputs.
+//     On this level we are working with token stream.
+//
+//  2. Run MIR pass to find asm invocations we generated previously.
+//     and discover types of all expressions that were passed to macro.
+//
+//  3. Run another MIR pass modifying asm text to final value.
+//
+//  We need to do last two steps separately due to running them with different
+//  MIR mutability.
+//
+//TODO:
+//
+// wrap input params in ( as i64) (or whatever is appropriate)
+//
+//
 
 #![feature(quote, plugin_registrar, rustc_private)]
 
@@ -34,6 +52,12 @@ use rustc::ty::{Ty, TyCtxt};
 //use this to mark inline asm we generate
 //so that we do not modify unrelated asm code
 static MAGIC_ASM_MARK: &'static str = "#probeasm";
+
+#[cfg(target_pointer_width = "32")]
+static PROBE_BYTE_WIDTH: &'static str = "4";
+
+#[cfg(target_pointer_width = "64")]
+static PROBE_BYTE_WIDTH: &'static str = "8";
 
 //mir visitor used for read-only pass
 //to retrieve input type information
@@ -95,7 +119,48 @@ struct MutProbeVisitor<'a, 'tcx: 'a> {
 }
 
 
+impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
+
+    fn generate_asm_code(&self, asm: &mut rustc::hir::InlineAsm, inputs: &Vec<mir::Operand>) {
+		let mut arg_str: String = "".to_string();
+		for (idx, input) in inputs.iter().enumerate() {
+			arg_str.push_str(&format!(" -8@${}", idx));
+		}
+		let asm_code = Symbol::intern(&format!(r##"
+			990:    nop
+			        .pushsection .note.stapsdt,"?","note"
+			        .balign 4
+			        .4byte 992f-991f, 994f-993f, 3
+			991:    .asciz "stapsdt"
+			992:    .balign 4
+			993:    .{bw}byte 990b
+			        .{bw}byte _.stapsdt.base
+			        .{bw}byte 0 // FIXME set semaphore address
+			        .asciz "foo"
+			        .asciz "begin"
+			        .asciz "{arg_str}"
+			994:    .balign 4
+			        .popsection
+			.ifndef _.stapsdt.base
+			        .pushsection .stapsdt.base,"aG","progbits",.stapsdt.base,comdat
+			        .weak _.stapsdt.base
+			        .hidden _.stapsdt.base
+			_.stapsdt.base: .space 1
+			        .size _.stapsdt.base, 1
+			        .popsection
+			.endif
+		"##, bw=PROBE_BYTE_WIDTH, arg_str=arg_str));
+        
+        println!("asm code:  {:?}", asm_code);
+        asm.asm = asm_code;
+    }
+}
+
 impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
+
+
+
+
     fn visit_statement(&mut self,
         _: BasicBlock,
         statement: &mut Statement<'tcx>,
@@ -107,14 +172,15 @@ impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
                 if !is_probe_asm(asm) {
                     return
                 };
-                let asm_str = asm.asm.as_str();
 
                 for (idx, input) in inputs.iter_mut().enumerate() {
 
                     //println!("input: {:?}", input);
                     println!("input: {:?} type: {:?}", input, self.input_types[idx]);
                 }
-	    		asm.asm = Symbol::intern("NOP");	
+
+				self.generate_asm_code(asm, &inputs);
+	    		//asm.asm = Symbol::intern("NOP");
 			}
 		}
 
@@ -176,7 +242,6 @@ fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         let mut provider: Option<String> = None;
         let mut name: Option<String> = None;
         let mut expressions: Vec<ast::Expr> = vec![];
-		let total = 0;
 
         //parse comma-separated param=value pairs
         let mut idx = 0;
@@ -223,7 +288,7 @@ fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         if idx < args.len() {
             let remainder = args.windows(args.len() - idx).last().unwrap();
             let mut parser = cx.new_parser_from_tts(remainder);
-            while true {
+            loop {
                 let expr  = parser.parse_expr();
                 if expr.is_ok() {
                     expressions.push(expr.unwrap().unwrap().clone());
