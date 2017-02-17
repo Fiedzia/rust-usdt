@@ -1,0 +1,7 @@
+[package]
+name = "usdt_demo"
+version = "0.0.1"
+authors = ["Maciej Dziardziel <fiedzia@gmail.com>"]
+
+[dependencies.rust-usdt]
+path = "../../"

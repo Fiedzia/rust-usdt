@@ -1,0 +1,11 @@
+[package]
+name = "rust-usdt"
+version = "0.0.1"
+authors = ["Maciej Dziardziel <fiedzia@gmalil.com>"]
+repository = "https://github.com/Fiedzia/rust-usdt"
+license = "MIT"
+description = "Inject USDT probes into rust code"
+
+[lib]
+name = "rust_usdt"
+plugin = true
