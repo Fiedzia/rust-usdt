@@ -91,7 +91,7 @@ pub fn is_probe_asm(asm: &hir::InlineAsm) -> bool {
 //mutable mir visitor
 struct MutProbeVisitor<'a, 'tcx: 'a> {
     input_types: Vec<Ty<'tcx>>,
-    d: Option<&'a u64>
+    phantom: PhantomData<&'a ()>
 }
 
 
@@ -137,7 +137,7 @@ impl <'tcx> MirPass<'tcx> for ProbeMirPlugin {
 			pv.visit_mir(&mir);
             pv.input_types
         };
-		let mut mvp = MutProbeVisitor{d: None, input_types: input_types};
+		let mut mvp = MutProbeVisitor{phantom: PhantomData, input_types: input_types};
 		mvp.visit_mir(mir);
     }
 }
