@@ -32,6 +32,7 @@ extern crate rustc_plugin;
 
 use std::marker::PhantomData;
 
+
 use syntax::ast;
 use syntax::ext::base::{ExtCtxt, MacEager, MacResult};
 use syntax::ext::build::AstBuilder;
@@ -58,6 +59,13 @@ static PROBE_BYTE_WIDTH: &'static str = "4";
 
 #[cfg(target_pointer_width = "64")]
 static PROBE_BYTE_WIDTH: &'static str = "8";
+
+
+struct ProbeProperties {
+    provider: Option<String>,
+    name: Option<String>
+}
+
 
 //mir visitor used for read-only pass
 //to retrieve input type information
@@ -121,10 +129,18 @@ struct MutProbeVisitor<'a, 'tcx: 'a> {
 
 impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
 
-    fn generate_asm_code(&self, asm: &mut rustc::hir::InlineAsm, inputs: &Vec<mir::Operand>) {
+    fn generate_asm_code(&self,
+                         asm: &mut rustc::hir::InlineAsm,
+                         inputs: &Vec<mir::Operand>,
+                         probe_properties: ProbeProperties
+                        ) {
 		let mut arg_str: String = "".to_string();
 		for (idx, input) in inputs.iter().enumerate() {
-			arg_str.push_str(&format!("-8@${}", idx));
+            let s = match idx {
+                0 => format!("-8@${}", idx),
+                _ => format!(" -8@${}", idx),
+            };
+			arg_str.push_str(&s);
 		}
 		let asm_code = Symbol::intern(&format!(r##"
 			990:    nop
@@ -136,8 +152,8 @@ impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
 			993:    .{bw}byte 990b
 			        .{bw}byte _.stapsdt.base
 			        .{bw}byte 0 // FIXME set semaphore address
-			        .asciz "foo"
-			        .asciz "begin"
+			        .asciz "{provider}"
+			        .asciz "{name}"
 			        .asciz "{arg_str}"
 			994:    .balign 4
 			        .popsection
@@ -149,7 +165,12 @@ impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
 			        .size _.stapsdt.base, 1
 			        .popsection
 			.endif
-		"##, bw=PROBE_BYTE_WIDTH, arg_str=arg_str));
+		"##,
+        bw=PROBE_BYTE_WIDTH,
+        arg_str=arg_str,
+        provider=probe_properties.provider.unwrap(),
+        name=probe_properties.name.unwrap()
+        ));
         
         println!("asm code:  {:?}", asm_code);
         asm.asm = asm_code;
@@ -172,14 +193,27 @@ impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
                 if !is_probe_asm(asm) {
                     return
                 };
-
+                let mut probe_properties = ProbeProperties{name: None, provider: None};
+                for line in asm.asm.to_string().as_str().lines() {
+                    if line.contains("=") {
+                        let k_v:Vec<&str> = line.splitn(2, "=").collect();
+                        //skip first character (#)
+                        let k:String = k_v[0].chars().skip(1).collect();
+                        match k.as_ref() {
+                            "name" => probe_properties.name = Some(k_v[1].to_string()),
+                            "provider" => probe_properties.provider = Some(k_v[1].to_string()),
+                            _ => panic!("unknown attribute")
+                        };
+                    }
+                }
+                assert!(probe_properties.name.is_some(), "missing probe name");
+                assert!(probe_properties.provider.is_some(), "missing probe provider");
                 for (idx, input) in inputs.iter_mut().enumerate() {
 
-                    //println!("input: {:?}", input);
                     println!("input: {:?} type: {:?}", input, self.input_types[idx]);
                 }
 
-				self.generate_asm_code(asm, &inputs);
+				self.generate_asm_code(asm, &inputs, probe_properties);
 	    		//asm.asm = Symbol::intern("NOP");
 			}
 		}
@@ -217,17 +251,6 @@ pub fn registrar(reg: &mut Registry) {
 }
 
 
-pub fn string_to_tts(source_str: String) -> Vec<TokenTree> {
-    let ps = ParseSess::new();
-    filemap_to_tts(&ps, ps.codemap().new_filemap("bogofile".to_string(), None, source_str))
-}
-
-
-fn string_to_ts(string: &str) -> TokenStream {
-    string_to_tts(string.to_owned()).into_iter().collect()
-}
-
-
 fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         -> Box<MacResult + 'static> {
 /* 
@@ -253,12 +276,13 @@ fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                 (
                     &TokenTree::Token(_, token::Token::Ident(ident)),
                     &TokenTree::Token(_, token::Token::Eq),
-                    &TokenTree::Token(_, token::Token::Literal(lit, ast_name))
+                    //TODO: allow static variables, maybe other types of Lit
+                    &TokenTree::Token(_, token::Token::Literal(token::Lit::Str_(s), ast_name))
                 ) => {
-                        let ident_str = ident.name.as_str().clone().to_string();
+                        let ident_str = ident.name.to_string();
                         match ident_str.as_str() {
-                            "provider" => { provider = Some(ident_str); },
-                            "name" => { name = Some(ident_str); },
+                            "provider" => { provider = Some(s.to_string()); },
+                            "name" => { name = Some(s.to_string()); },
                             _ => { panic!("unexpected value"); }
                         };
                 },
