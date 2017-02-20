@@ -156,13 +156,18 @@ fn get_input_size(input_type: &ty::TypeVariants) -> i8 {
                 ast::FloatTy::F64 => 8,
             }
         },
+        //&ty::TyRef(_, ty::TypeAndMut { ty: _, mutbl: _ }) => 8,
+        &ty::TyRef(_, _) => 8,
+        //TyRef(ReScope(CodeExtent(93/Misc(NodeId(67)))), TypeAndMut { ty: str, mutbl: MutImmutable })
+        &ty::TyRawPtr(ty::TypeAndMut { ty: _, mutbl: _ }) => 8,
+        //&ty::TyAdt(_ /*std::ffi::OsString*/, _) => 8,
         //TyStr - ptr to str,
         //TySlice(ty),
         //TyRawPtr(type_and_mut)
         //TyRef(region, type_and_mut)
         //TyAdt(adt_ref, substs)
         //
-        _ => {panic!("type: unknown"); }
+        _ => {println!("bugme"); panic!("type: unknown {:?}", input_type); }
    
    }
 }
@@ -187,6 +192,7 @@ impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
 			arg_str.push_str(&s);
 		}
 		let asm_code = Symbol::intern(&format!(r##"
+            #probeasm
 			990:    nop
 			        .pushsection .note.stapsdt,"?","note"
 			        .balign 4
