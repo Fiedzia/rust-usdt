@@ -1,6 +1,6 @@
 // High level overview:
 //
-//  There are few steps we do here:
+//  Here are the steps we do here:
 //
 //  1. register compiler plugin providing static_probe macro.
 //     This will convert probe macros into
@@ -47,7 +47,7 @@ use rustc::mir::{BasicBlock, Location, Mir, Statement};
 use rustc::mir::visit::{Visitor as MirVisitor, MutVisitor};
 use rustc::mir::transform::{MirPass, MirSource, Pass};
 use rustc_plugin::Registry;
-use rustc::ty::{Ty, TyCtxt};
+use rustc::ty::{self, Ty, TyCtxt};
 
 
 //use this to mark inline asm we generate
@@ -127,6 +127,48 @@ struct MutProbeVisitor<'a, 'tcx: 'a> {
 }
 
 
+
+fn get_input_size(input_type: &ty::TypeVariants) -> i8 {
+    match input_type {
+        &ty::TypeVariants::TyInt(int_type) => {
+            match int_type {
+                ast::IntTy::Is  => -8, //TODO: handle 32bit
+                ast::IntTy::I8  => -1,
+                ast::IntTy::I16 => -2,
+                ast::IntTy::I32 => -4,
+                ast::IntTy::I64 => -8,
+                _ => panic!("Type unsupported by probe spec")
+            }
+        },
+        &ty::TypeVariants::TyUint(uint_type) => {
+            match uint_type {
+                ast::UintTy::Us  => 8, //TODO: handle 32bit
+                ast::UintTy::U8  => 1,
+                ast::UintTy::U16 => 2,
+                ast::UintTy::U32 => 4,
+                ast::UintTy::U64 => 8,
+                _ => panic!("Type unsupported by probe spec")
+            }
+        },
+        &ty::TypeVariants::TyFloat(float_type) => {
+            match float_type {
+                ast::FloatTy::F32 => 4,
+                ast::FloatTy::F64 => 8,
+            }
+        },
+        //TyStr - ptr to str,
+        //TySlice(ty),
+        //TyRawPtr(type_and_mut)
+        //TyRef(region, type_and_mut)
+        //TyAdt(adt_ref, substs)
+        //
+        _ => {panic!("type: unknown"); }
+   
+   }
+}
+
+//https://sourceware.org/systemtap/wiki/UserSpaceProbeImplementation
+
 impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
 
     fn generate_asm_code(&self,
@@ -135,10 +177,12 @@ impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
                          probe_properties: ProbeProperties
                         ) {
 		let mut arg_str: String = "".to_string();
-		for (idx, input) in inputs.iter().enumerate() {
+		for (idx, input) in self.input_types.iter().enumerate() {
+            println!("sty:{:?}", &input.sty);
+            let input_size = get_input_size(&input.sty);
             let s = match idx {
-                0 => format!("-8@${}", idx),
-                _ => format!(" -8@${}", idx),
+                0 => format!("{input_size}@${idx}", idx=idx, input_size=input_size),
+                _ => format!(" {input_size}@${idx}", idx=idx, input_size=input_size),
             };
 			arg_str.push_str(&s);
 		}
