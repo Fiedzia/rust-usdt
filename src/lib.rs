@@ -32,15 +32,14 @@ extern crate rustc_plugin;
 
 use std::marker::PhantomData;
 
-
 use syntax::ast;
 use syntax::ext::base::{ExtCtxt, MacEager, MacResult};
 use syntax::ext::build::AstBuilder;
-use syntax::parse::{filemap_to_tts, ParseSess, token};
+use syntax::parse::token;
 use syntax_pos::{Span, NO_EXPANSION};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenTree, TokenStream};
+use syntax::tokenstream::TokenTree;
 
 use rustc::{hir, mir};
 use rustc::mir::{BasicBlock, Location, Mir, Statement};
@@ -79,18 +78,18 @@ impl <'a, 'tcx>ProbeVisitor<'a, 'tcx> {
     fn set_input_types_from_asm(&mut self, asm_inputs: &Vec<mir::Operand>){
         //inspect asm inputs and set self.input_types to match them
         for input in asm_inputs {
-			match input {
-				&mir::Operand::Consume(ref lv) => {
-					match lv {
-						&mir::Lvalue::Static(d) => panic!("bug"),
-						&mir::Lvalue::Local(def_id) => {
+            match input {
+                &mir::Operand::Consume(ref lv) => {
+                    match lv {
+                        &mir::Lvalue::Static(_) => panic!("bug"),
+                        &mir::Lvalue::Local(def_id) => {
                             self.input_types.push(self.mir.local_decls[def_id].ty);
                         },
-						_ => { panic!("bug")}
-					};
-				},
-				&mir::Operand::Constant(ref c) => panic!("bug")
-			};
+                        _ => { panic!("bug")}
+                    };
+                },
+                &mir::Operand::Constant(_) => panic!("bug")
+            };
         }
         assert!(asm_inputs.len() == self.input_types.len());
     }
@@ -129,6 +128,9 @@ struct MutProbeVisitor<'a, 'tcx: 'a> {
 
 
 fn get_input_size(input_type: &ty::TypeVariants) -> i8 {
+    //Given a type, provide a byte-size matching systemtap expectations
+    //https://sourceware.org/systemtap/wiki/UserSpaceProbeImplementation
+    //report an error if we cannot support it
     match input_type {
         &ty::TypeVariants::TyInt(int_type) => {
             match int_type {
@@ -156,87 +158,87 @@ fn get_input_size(input_type: &ty::TypeVariants) -> i8 {
                 ast::FloatTy::F64 => 8,
             }
         },
-        //&ty::TyRef(_, ty::TypeAndMut { ty: _, mutbl: _ }) => 8,
         &ty::TyRef(_, _) => 8,
-        //TyRef(ReScope(CodeExtent(93/Misc(NodeId(67)))), TypeAndMut { ty: str, mutbl: MutImmutable })
         &ty::TyRawPtr(ty::TypeAndMut { ty: _, mutbl: _ }) => 8,
         //&ty::TyAdt(_ /*std::ffi::OsString*/, _) => 8,
         //TyStr - ptr to str,
         //TySlice(ty),
-        //TyRawPtr(type_and_mut)
-        //TyRef(region, type_and_mut)
         //TyAdt(adt_ref, substs)
-        //
-        _ => {println!("bugme"); panic!("type: unknown {:?}", input_type); }
-   
+        _ => {println!("bugme"); panic!("I don't know what to do with type: {:?}, report a bug.", input_type); }
    }
 }
 
-//https://sourceware.org/systemtap/wiki/UserSpaceProbeImplementation
+
+
+fn generate_asm_code(_: &mut rustc::hir::InlineAsm,
+                     _ : &Vec<mir::Operand>, //inputs
+                     input_types: &[Ty],
+                     probe_properties: ProbeProperties) -> String {
+
+    let mut arg_str: String = "".to_string();
+    for (idx, input) in input_types.iter().enumerate() {
+        println!("sty:{:?}", &input.sty);
+        let input_size = get_input_size(&input.sty);
+        let s = match idx {
+            0 => format!("{input_size}@${idx}", idx=idx, input_size=input_size),
+            _ => format!(" {input_size}@${idx}", idx=idx, input_size=input_size),
+        };
+        arg_str.push_str(&s);
+    }
+    let asm_code = format!(r##"
+        #probeasm
+        990:    nop
+                .pushsection .note.stapsdt,"?","note"
+                .balign 4
+                .4byte 992f-991f, 994f-993f, 3
+        991:    .asciz "stapsdt"
+        992:    .balign 4
+        993:    .{bw}byte 990b
+                .{bw}byte _.stapsdt.base
+                .{bw}byte 0 // FIXME set semaphore address
+                .asciz "{provider}"
+                .asciz "{name}"
+                .asciz "{arg_str}"
+        994:    .balign 4
+                .popsection
+        .ifndef _.stapsdt.base
+                .pushsection .stapsdt.base,"aG","progbits",.stapsdt.base,comdat
+                .weak _.stapsdt.base
+                .hidden _.stapsdt.base
+        _.stapsdt.base: .space 1
+                .size _.stapsdt.base, 1
+                .popsection
+        .endif
+    "##,
+    bw=PROBE_BYTE_WIDTH,
+    arg_str=arg_str,
+    provider=probe_properties.provider.unwrap(),
+    name=probe_properties.name.unwrap()
+    );
+    
+    println!("asm code:  {:?}", asm_code);
+    asm_code
+}
+
+
 
 impl <'a, 'tcx> MutProbeVisitor<'a, 'tcx> {
 
-    fn generate_asm_code(&self,
+    /*fn generate_asm_code(&self,
                          asm: &mut rustc::hir::InlineAsm,
-                         inputs: &Vec<mir::Operand>,
+                         _ : &Vec<mir::Operand>, //inputs
                          probe_properties: ProbeProperties
                         ) {
-		let mut arg_str: String = "".to_string();
-		for (idx, input) in self.input_types.iter().enumerate() {
-            println!("sty:{:?}", &input.sty);
-            let input_size = get_input_size(&input.sty);
-            let s = match idx {
-                0 => format!("{input_size}@${idx}", idx=idx, input_size=input_size),
-                _ => format!(" {input_size}@${idx}", idx=idx, input_size=input_size),
-            };
-			arg_str.push_str(&s);
-		}
-		let asm_code = Symbol::intern(&format!(r##"
-            #probeasm
-			990:    nop
-			        .pushsection .note.stapsdt,"?","note"
-			        .balign 4
-			        .4byte 992f-991f, 994f-993f, 3
-			991:    .asciz "stapsdt"
-			992:    .balign 4
-			993:    .{bw}byte 990b
-			        .{bw}byte _.stapsdt.base
-			        .{bw}byte 0 // FIXME set semaphore address
-			        .asciz "{provider}"
-			        .asciz "{name}"
-			        .asciz "{arg_str}"
-			994:    .balign 4
-			        .popsection
-			.ifndef _.stapsdt.base
-			        .pushsection .stapsdt.base,"aG","progbits",.stapsdt.base,comdat
-			        .weak _.stapsdt.base
-			        .hidden _.stapsdt.base
-			_.stapsdt.base: .space 1
-			        .size _.stapsdt.base, 1
-			        .popsection
-			.endif
-		"##,
-        bw=PROBE_BYTE_WIDTH,
-        arg_str=arg_str,
-        provider=probe_properties.provider.unwrap(),
-        name=probe_properties.name.unwrap()
-        ));
-        
-        println!("asm code:  {:?}", asm_code);
-        asm.asm = asm_code;
-    }
+    }*/
 }
 
 impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
-
-
-
 
     fn visit_statement(&mut self,
         _: BasicBlock,
         statement: &mut Statement<'tcx>,
         _: Location) {
-        if let mir::StatementKind::Assign(ref mut lval, ref mut rval) = statement.kind {
+        if let mir::StatementKind::Assign(_, ref mut rval) = statement.kind {
 
             if let &mut mir::Rvalue::InlineAsm{ref mut asm, ref mut inputs, outputs: _} = rval {
 
@@ -263,12 +265,12 @@ impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
                     println!("input: {:?} type: {:?}", input, self.input_types[idx]);
                 }
 
-				self.generate_asm_code(asm, &inputs, probe_properties);
-	    		//asm.asm = Symbol::intern("NOP");
-			}
-		}
+                asm.asm = Symbol::intern(&generate_asm_code(asm, &inputs, &self.input_types, probe_properties));
+                //asm.asm = Symbol::intern("NOP");
+            }
+        }
 
-	}
+    }
 
 }
 
@@ -281,21 +283,21 @@ struct ProbeMirPlugin {}
 impl <'tcx> Pass for ProbeMirPlugin {}
 impl <'tcx> MirPass<'tcx> for ProbeMirPlugin {
 
-    fn run_pass<'a>(&mut self, types: TyCtxt<'a, 'tcx, 'tcx>, _: MirSource, mir: &mut Mir<'tcx>) {
+    fn run_pass<'a>(&mut self, _: TyCtxt<'a, 'tcx, 'tcx>, _: MirSource, mir: &mut Mir<'tcx>) {
         let input_types = {
-			let mut pv = ProbeVisitor {mir: &mir, input_types: vec![]};
-			pv.visit_mir(&mir);
+            let mut pv = ProbeVisitor {mir: &mir, input_types: vec![]};
+            pv.visit_mir(&mir);
             pv.input_types
         };
-		let mut mvp = MutProbeVisitor{phantom: PhantomData, input_types: input_types};
-		mvp.visit_mir(mir);
+        let mut mvp = MutProbeVisitor{phantom: PhantomData, input_types: input_types};
+        mvp.visit_mir(mir);
     }
 }
 
 #[plugin_registrar]
 pub fn registrar(reg: &mut Registry) {
 
-    let mut visitor = ProbeMirPlugin {};
+    let visitor = ProbeMirPlugin {};
     reg.register_mir_pass(Box::new(visitor));
     reg.register_macro("static_probe", static_probe_expand);
 }
@@ -327,7 +329,7 @@ fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
                     &TokenTree::Token(_, token::Token::Ident(ident)),
                     &TokenTree::Token(_, token::Token::Eq),
                     //TODO: allow static variables, maybe other types of Lit
-                    &TokenTree::Token(_, token::Token::Literal(token::Lit::Str_(s), ast_name))
+                    &TokenTree::Token(_, token::Token::Literal(token::Lit::Str_(s), _))
                 ) => {
                         let ident_str = ident.name.to_string();
                         match ident_str.as_str() {
@@ -350,7 +352,7 @@ fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
             }
         }
         if provider.is_none() {
-            let provider = Some("".to_string());
+            provider = Some("".to_string());
         }
 
         if name.is_none() {
