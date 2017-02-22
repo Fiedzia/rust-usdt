@@ -62,13 +62,11 @@ impl<'a, 'tcx> MirVisitor<'tcx> for ProbeVisitor<'a, 'tcx> {
         _: BasicBlock,
         statement: &Statement<'tcx>,
         _: Location) {
-        if let mir::StatementKind::Assign(_, ref rval) = statement.kind {
-            if let &mir::Rvalue::InlineAsm{ref asm, ref inputs, outputs: _} = rval {
-                if !is_probe_asm(&asm) {
-                    return
-                };
-                self.set_input_types_from_asm(&inputs);
-            }
+        if let mir::StatementKind::InlineAsm{ref asm, ref inputs, ..} = statement.kind {
+            if !is_probe_asm(&asm) {
+                return
+            };
+            self.set_input_types_from_asm(&inputs);
         }
     }
 }
@@ -93,35 +91,33 @@ impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
         _: BasicBlock,
         statement: &mut Statement<'tcx>,
         _: Location) {
-        if let mir::StatementKind::Assign(_, ref mut rval) = statement.kind {
 
-            if let &mut mir::Rvalue::InlineAsm{ref mut asm, ref mut inputs, outputs: _} = rval {
+        if let mir::StatementKind::InlineAsm{ref mut asm, ref mut inputs, ..} = statement.kind {
 
-                if !is_probe_asm(asm) {
-                    return
-                };
-                let mut probe_properties = ProbeProperties{name: None, provider: None};
-                for line in asm.asm.to_string().as_str().lines() {
-                    if line.contains("=") {
-                        let k_v:Vec<&str> = line.splitn(2, "=").collect();
-                        //skip first character (#)
-                        let k:String = k_v[0].chars().skip(1).collect();
-                        match k.as_ref() {
-                            "name" => probe_properties.name = Some(k_v[1].to_string()),
-                            "provider" => probe_properties.provider = Some(k_v[1].to_string()),
-                            _ => panic!("unknown attribute")
-                        };
-                    }
+            if !is_probe_asm(asm) {
+                return
+            };
+            let mut probe_properties = ProbeProperties{name: None, provider: None};
+            for line in asm.asm.to_string().as_str().lines() {
+                if line.contains("=") {
+                    let k_v:Vec<&str> = line.splitn(2, "=").collect();
+                    //skip first character (#)
+                    let k:String = k_v[0].chars().skip(1).collect();
+                    match k.as_ref() {
+                        "name" => probe_properties.name = Some(k_v[1].to_string()),
+                        "provider" => probe_properties.provider = Some(k_v[1].to_string()),
+                        _ => panic!("unknown attribute")
+                    };
                 }
-                assert!(probe_properties.name.is_some(), "missing probe name");
-                assert!(probe_properties.provider.is_some(), "missing probe provider");
-                for (idx, input) in inputs.iter_mut().enumerate() {
-
-                    println!("input: {:?} type: {:?}", input, self.input_types[idx]);
-                }
-
-                asm.asm = Symbol::intern(&platform::implementation::generate_asm_code(asm, &inputs, &self.input_types, probe_properties));
             }
+            assert!(probe_properties.name.is_some(), "missing probe name");
+            assert!(probe_properties.provider.is_some(), "missing probe provider");
+            for (idx, input) in inputs.iter_mut().enumerate() {
+
+                println!("input: {:?} type: {:?}", input, self.input_types[idx]);
+            }
+
+            asm.asm = Symbol::intern(&platform::implementation::generate_asm_code(asm, &inputs, &self.input_types, probe_properties));
         }
 
     }
