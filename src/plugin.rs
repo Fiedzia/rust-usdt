@@ -36,20 +36,20 @@ pub struct ProbeVisitor<'a, 'tcx: 'a> {
 
 impl <'a, 'tcx>ProbeVisitor<'a, 'tcx> {
 
-    fn set_input_types_from_asm(&mut self, asm_inputs: &Vec<mir::Operand>){
+    fn set_input_types_from_asm(&mut self, asm_inputs: &[mir::Operand]){
         //inspect asm inputs and set self.input_types to match them
         for input in asm_inputs {
-            match input {
-                &mir::Operand::Consume(ref lv) => {
-                    match lv {
-                        &mir::Lvalue::Static(_) => panic!("bug"),
-                        &mir::Lvalue::Local(def_id) => {
+            match *input {
+                mir::Operand::Consume(ref lv) => {
+                    match *lv {
+                        mir::Lvalue::Static(_) => panic!("bug"),
+                        mir::Lvalue::Local(def_id) => {
                             self.input_types.push(self.mir.local_decls[def_id].ty);
                         },
                         _ => { panic!("bug")}
                     };
                 },
-                &mir::Operand::Constant(_) => panic!("bug")
+                mir::Operand::Constant(_) => panic!("bug")
             };
         }
         assert!(asm_inputs.len() == self.input_types.len());
@@ -63,10 +63,10 @@ impl<'a, 'tcx> MirVisitor<'tcx> for ProbeVisitor<'a, 'tcx> {
         statement: &Statement<'tcx>,
         _: Location) {
         if let mir::StatementKind::InlineAsm{ref asm, ref inputs, ..} = statement.kind {
-            if !is_probe_asm(&asm) {
+            if !is_probe_asm(asm) {
                 return
             };
-            self.set_input_types_from_asm(&inputs);
+            self.set_input_types_from_asm(inputs);
         }
     }
 }
@@ -99,8 +99,8 @@ impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
             };
             let mut probe_properties = ProbeProperties{name: None, provider: None};
             for line in asm.asm.to_string().as_str().lines() {
-                if line.contains("=") {
-                    let k_v:Vec<&str> = line.splitn(2, "=").collect();
+                if line.contains('=') {
+                    let k_v:Vec<&str> = line.splitn(2, '=').collect();
                     //skip first character (#)
                     let k:String = k_v[0].chars().skip(1).collect();
                     match k.as_ref() {
@@ -117,7 +117,7 @@ impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
                 println!("input: {:?} type: {:?}", input, self.input_types[idx]);
             }
 
-            asm.asm = Symbol::intern(&platform::implementation::generate_asm_code(asm, &inputs, &self.input_types, probe_properties));
+            asm.asm = Symbol::intern(&platform::implementation::generate_asm_code(asm, inputs, &self.input_types, probe_properties));
         }
 
     }
@@ -135,8 +135,8 @@ impl <'tcx> MirPass<'tcx> for ProbeMirPlugin {
 
     fn run_pass<'a>(&mut self, _: TyCtxt<'a, 'tcx, 'tcx>, _: MirSource, mir: &mut Mir<'tcx>) {
         let input_types = {
-            let mut pv = ProbeVisitor {mir: &mir, input_types: vec![]};
-            pv.visit_mir(&mir);
+            let mut pv = ProbeVisitor {mir: mir, input_types: vec![]};
+            pv.visit_mir(mir);
             pv.input_types
         };
         let mut mvp = MutProbeVisitor{phantom: PhantomData, input_types: input_types};

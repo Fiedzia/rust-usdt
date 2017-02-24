@@ -22,7 +22,7 @@ use typeinfo::get_input_size;
 
 
 
-pub fn generate_asm_code(_: &mut rustc::hir::InlineAsm,
+pub fn generate_asm_code(_: &rustc::hir::InlineAsm,
                      _ : &Vec<mir::Operand>, //inputs
                      input_types: &[Ty],
                      probe_properties: ProbeProperties) -> String {
