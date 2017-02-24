@@ -3,7 +3,15 @@ Inject USDT probes into rust code
 
 Based on work done by Josh Stone [https://github.com/cuviper/rust-libprobe]
 
+
+![Build status](https://travis-ci.org/Fiedzia/rust-usdt.svg?branch=master "Build status")
+
+
+For more details, see [documentation](doc/doc.md)
+
+
 Usage:
+======
 
 Cargo.toml:
 ```toml
@@ -50,4 +58,3 @@ PID    TID    COMM         FUNC             -
 (you will need to run your app in separate terminal window to see the results)
 
 
-For more details, see [documentation](doc/doc.md).
