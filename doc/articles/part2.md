@@ -1,6 +1,6 @@
 # Rust bcc/BPF function tracing
 
-This text is the second one in the series of articles I wrote about using tracing with Rust. See the first here: [Tracing - your println 2.0](../part1.md)
+This text is the second one in the series of articles I wrote about using tracing with Rust. See the first here: [Tracing - your println 2.0](part1.md)
 
 This time, inspired by Brendan Gregg's article [Golang bcc/BPF Function Tracing](http://www.brendangregg.com/blog/2017-01-31/golang-bcc-bpf-function-tracing.html) about using bpf tracing with Golang, I explored how it works with Rust.
 
