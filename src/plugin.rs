@@ -12,8 +12,10 @@ use syntax::tokenstream::TokenTree;
 use rustc::{hir, mir};
 use rustc::mir::{BasicBlock, Location, Mir, Statement};
 use rustc::mir::visit::{Visitor as MirVisitor, MutVisitor};
-use rustc::mir::transform::{MirPass, MirSource, Pass};
+use rustc_mir::transform::{MirPass, MirSource};
 use rustc::ty::{Ty, TyCtxt};
+
+use rustc_data_structures::thin_vec::ThinVec;
 
 
 use common::ProbeProperties;
@@ -42,8 +44,8 @@ impl <'a, 'tcx>ProbeVisitor<'a, 'tcx> {
             match *input {
                 mir::Operand::Consume(ref lv) => {
                     match *lv {
-                        mir::Lvalue::Static(_) => panic!("bug"),
-                        mir::Lvalue::Local(def_id) => {
+                        mir::Place::Static(_) => panic!("bug"),
+                        mir::Place::Local(def_id) => {
                             self.input_types.push(self.mir.local_decls[def_id].ty);
                         },
                         _ => { panic!("bug")}
@@ -125,15 +127,15 @@ impl <'a, 'tcx> MutVisitor<'tcx> for MutProbeVisitor<'a, 'tcx> {
 }
 
 
-impl <'a, 'tcx> Pass for MutProbeVisitor<'a, 'tcx> {}
+//impl <'a, 'tcx> Pass for MutProbeVisitor<'a, 'tcx> {}
 
 
 pub struct ProbeMirPlugin {}
 
-impl <'tcx> Pass for ProbeMirPlugin {}
-impl <'tcx> MirPass<'tcx> for ProbeMirPlugin {
+//impl <'tcx> Pass for ProbeMirPlugin {}
+impl MirPass for ProbeMirPlugin {
 
-    fn run_pass<'a>(&mut self, _: TyCtxt<'a, 'tcx, 'tcx>, _: MirSource, mir: &mut Mir<'tcx>) {
+    fn run_pass<'a, 'tcx>(&self, _: TyCtxt<'a, 'tcx, 'tcx>, _: MirSource, mir: &mut Mir<'tcx>) {
         let input_types = {
             let mut pv = ProbeVisitor {mir: mir, input_types: vec![]};
             pv.visit_mir(mir);
@@ -231,7 +233,7 @@ pub fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
             node: ast::StmtKind::Expr(P(ast::Expr{
                 id: ast::DUMMY_NODE_ID,
                 span: sp,
-                attrs: ast::ThinVec::new(),
+                attrs: ThinVec::new(),
                 node: ast::ExprKind::InlineAsm(P(ast::InlineAsm{
                     asm: Symbol::intern(&asm_text),
                     asm_str_style: ast::StrStyle::Cooked,
