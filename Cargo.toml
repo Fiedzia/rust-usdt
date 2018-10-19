@@ -4,9 +4,16 @@ description = "Inject USDT probes into rust code"
 license = "MIT"
 name = "rust-usdt"
 repository = "https://github.com/Fiedzia/rust-usdt"
-version = "0.0.1"
+version = "0.0.2"
+
+[dependencies]
+libasm = "0.1.2"
 
 [lib]
-crate-type = ["lib", "dylib", "rlib"]
+crate-type = [
+    "lib",
+    "dylib",
+    "rlib",
+]
 name = "rust_usdt"
 plugin = true

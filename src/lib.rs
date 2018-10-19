@@ -1,21 +1,7 @@
+#[macro_use]
+extern crate libasm;
+
 // High level overview:
-//
-//  Here are the steps we do here:
-//
-//  1. register compiler plugin providing static_probe macro.
-//     This will convert probe macros into
-//     unsafe { asm!("..."); } blocks,
-//     inserting MAGIC_ASM_MARK and attribute values into asm text.
-//     Here we also connect expression passed to probe to asm inputs.
-//     On this level we are working with token stream.
-//
-//  2. Run MIR pass to find asm invocations we generated previously.
-//     and discover types of all expressions that were passed to macro.
-//
-//  3. Run another MIR pass modifying asm text to final value.
-//
-//  We need to do last two steps separately due to running them with different
-//  MIR mutability.
 //
 //TODO:
 //
@@ -23,37 +9,76 @@
 //
 //
 
-#![feature(quote, plugin_registrar, rustc_private)]
+//macro to obtain type of a variable
+//taken from https://stackoverflow.com/questions/21747136/how-do-i-print-the-type-of-a-variable-in-rust
+//written by phicr
+pub trait TypeInfo {
+    fn type_name() -> String;
+    fn type_of(&self) -> String;
+}
+    
+macro_rules! impl_type_info {
+    ($($name:ident$(<$($T:ident),+>)*),*) => {
+        $(impl_type_info_single!($name$(<$($T),*>)*);)*
+    };
+}
+    
+macro_rules! mut_if {
+    ($name:ident = $value:expr, $($any:expr)+) => (let mut $name = $value;);
+    ($name:ident = $value:expr,) => (let $name = $value;);
+}
+    
+macro_rules! impl_type_info_single {
+    ($name:ident$(<$($T:ident),+>)*) => {
+        impl$(<$($T: TypeInfo),*>)* TypeInfo for $name$(<$($T),*>)* {
+            fn type_name() -> String {
+                mut_if!(res = String::from(stringify!($name)), $($($T)*)*);
+                $(
+                    res.push('<');
+                    $(
+                        res.push_str(&$T::type_name());
+                        res.push(',');
+                    )*
+                    res.pop();
+                    res.push('>');
+                )*
+                res
+            }
+            fn type_of(&self) -> String {
+                $name$(::<$($T),*>)*::type_name()
+            }
+        }
+    }
+}
+    
+impl<'a, T: TypeInfo + ?Sized> TypeInfo for &'a T {
+    fn type_name() -> String {
+        let mut res = String::from("&");
+        res.push_str(&T::type_name());
+        res
+    }
+    fn type_of(&self) -> String {
+        <&T>::type_name()
+    }
+}
 
-
-extern crate syntax;
-extern crate syntax_pos;
-extern crate rustc;
-extern crate rustc_data_structures;
-extern crate rustc_mir;
-extern crate rustc_plugin;
-
-use rustc_plugin::Registry;
-
-mod common;
-mod consts;
-mod platform;
-mod plugin;
-mod typeinfo;
-
-use plugin::ProbeMirPlugin;
-
-
-#[plugin_registrar]
-pub fn registrar(reg: &mut Registry) {
-
-    let visitor = ProbeMirPlugin {};
-    reg.register_mir_pass(Box::new(visitor));
-    reg.register_macro("static_probe", plugin::static_probe_expand);
+macro_rules! type_of {
+    ($x:expr) => { (&$x).type_of() };
 }
 
 
+/// static_probe! macro
+/// Usage: static_probe!(provider="foo", name="bar");
+///        let foo = 1u32;
+///        static_probe!(provider="foo", name="bar", foo);
+///
 
+macro_rules! static_probe {
+    (provider = $probe_provider :expr, name= $probe_name :expr  $(, $var:expr )* ) => (
+    println!("provider: {} name: {}", $probe_provider, $probe_name);
+    $(println!("x:{}", $x);)*
+    );
+}
 
 
 
