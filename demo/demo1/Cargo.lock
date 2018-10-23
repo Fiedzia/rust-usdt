@@ -1,11 +1,11 @@
-[root]
+[[package]]
+name = "rust-usdt"
+version = "0.0.1"
+
+[[package]]
 name = "usdt_demo"
 version = "0.0.1"
 dependencies = [
  "rust-usdt 0.0.1",
 ]
-
-[[package]]
-name = "rust-usdt"
-version = "0.0.1"
 

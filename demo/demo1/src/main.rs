@@ -15,7 +15,7 @@ fn main() {
         let s1: String = "abc".to_string();
         sleep(Duration::from_millis(1000));
         let s2:&str = s1.as_str();
-        static_probe!(provider="foo", name="bar"; i, u1, (OsString::from(&s1).as_os_str()).as_bytes().as_ptr() );
+        static_probe!(provider="foo", name="bar"; i u8, u1 u8, (OsString::from(&s1).as_os_str()).as_bytes().as_ptr() Ptr);
     }
 }
 
