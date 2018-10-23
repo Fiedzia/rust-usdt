@@ -41,20 +41,7 @@ mod platform;
 mod plugin;
 mod typeinfo;
 
-use plugin::ProbeMirPlugin;
-
-
 #[plugin_registrar]
 pub fn registrar(reg: &mut Registry) {
-
-    let visitor = ProbeMirPlugin {};
-    reg.register_mir_pass(Box::new(visitor));
     reg.register_macro("static_probe", plugin::static_probe_expand);
 }
-
-
-
-
-
-
-
