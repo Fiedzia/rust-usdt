@@ -37,8 +37,9 @@ use rustc_plugin::Registry;
 
 mod common;
 mod consts;
-//mod platform;
+mod platform;
 mod plugin;
+mod typeinfo;
 
 #[plugin_registrar]
 pub fn registrar(reg: &mut Registry) {
