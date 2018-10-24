@@ -1,5 +1,5 @@
 # rust-usdt
-Inject USDT probes into rust code
+Inject USDT probes into rust code. Requires nightly.
 
 Based on work done by Josh Stone [https://github.com/cuviper/rust-libprobe]
 
@@ -29,7 +29,7 @@ in src/main.rs (as example, but you can insert probes in any place in your code)
 fn main() {
     let a = 0i64;
 	let b = 1i64;
-    static_probe!(provider="foo", name="bar"; a, b);
+    static_probe!(provider="foo", name="bar"; a,  i64, b, i64);
 }
 ```
 
