@@ -1,5 +1,3 @@
-use syntax::ast::Ty;
-
 use consts;
 use common::ProbeProperties;
 use typeinfo::get_input_size;
@@ -8,7 +6,7 @@ use typeinfo::get_input_size;
 pub fn generate_asm_code(probe_properties: &ProbeProperties) -> Option<String> {
 
     let mut arg_str: String = "".to_string();
-    for (idx, (expr, ty)) in probe_properties.arguments.iter().enumerate() {
+    for (idx, (_expr, ty)) in probe_properties.arguments.iter().enumerate() {
         let input_size = get_input_size(&ty);
         let s = match idx {
             0 => format!("{input_size}@${idx}", idx=idx, input_size=input_size),
