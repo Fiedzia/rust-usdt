@@ -28,7 +28,7 @@ pub fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         name: None,
         arguments: vec![],
     };
-    let mut expressions: Vec<ast::Expr> = vec![];
+    let mut expressions: Vec<ast::Expr> = probe_properties.arguments.iter().map(|(expr,_)| expr.clone()).collect();
 
     //parse comma-separated param=value pairs
     let mut idx = 0;
@@ -78,23 +78,25 @@ pub fn static_probe_expand(cx: &mut ExtCtxt, sp: Span, args: &[TokenTree])
         let mut parser = cx.new_parser_from_tts(remainder);
         loop {
             let expr  = &*parser.parse_expr().unwrap();
-            println!("expr={:?}", expr);
             parser.eat(&token::Comma);
             let _type = &*parser.parse_ty().unwrap();
             probe_properties.arguments.push((expr.clone(), _type.clone()));
             parser.eat(&token::Comma);
             if parser.eat(&token::Eof) {
                 break
-            } else {
-                println!("rem: {:?}", remainder);
             }
         }
 
     }
     
     let asm_text = platform::implementation::generate_asm_code(&probe_properties).unwrap_or("".to_string());
-    println!("asm:{}", asm_text);
-    let asm_expressions: Vec<(Symbol, P<ast::Expr>)> = expressions.into_iter().map(|expr| {(Symbol::intern("nor"), P(expr))}).collect();
+    let asm_expressions: Vec<(Symbol, P<ast::Expr>)> = probe_properties
+        .arguments
+        .iter()
+        .map(|(expr, ty)| {
+            (Symbol::intern("nor"), P(expr.clone()))
+        })
+        .collect();
     let stmt = ast::Stmt{
         id: ast::DUMMY_NODE_ID,
         node: ast::StmtKind::Expr(P(ast::Expr{
