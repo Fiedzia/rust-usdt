@@ -25,13 +25,12 @@
 
 #![feature(quote, plugin_registrar, rustc_private)]
 
-
-extern crate syntax;
-extern crate syntax_pos;
 extern crate rustc;
 extern crate rustc_data_structures;
 extern crate rustc_mir;
 extern crate rustc_plugin;
+extern crate syntax;
+extern crate syntax_pos;
 
 use rustc_plugin::Registry;
 

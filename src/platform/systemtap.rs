@@ -1,21 +1,20 @@
-use consts;
 use common::ProbeProperties;
+use consts;
 use typeinfo::get_input_size;
 
-
 pub fn generate_asm_code(probe_properties: &ProbeProperties) -> Option<String> {
-
     let mut arg_str: String = "".to_string();
     for (idx, (_expr, ty)) in probe_properties.arguments.iter().enumerate() {
         let input_size = get_input_size(&ty);
         let s = match idx {
-            0 => format!("{input_size}@${idx}", idx=idx, input_size=input_size),
-            _ => format!(" {input_size}@${idx}", idx=idx, input_size=input_size),
+            0 => format!("{input_size}@${idx}", idx = idx, input_size = input_size),
+            _ => format!(" {input_size}@${idx}", idx = idx, input_size = input_size),
         };
         arg_str.push_str(&s);
     }
     println!("args:{}", arg_str);
-    let asm_code = format!(r##"
+    let asm_code = format!(
+        r##"
         #probeasm
         990:    nop
                 .pushsection .note.stapsdt,"?","note"
@@ -40,10 +39,10 @@ pub fn generate_asm_code(probe_properties: &ProbeProperties) -> Option<String> {
                 .popsection
         .endif
     "##,
-    bw=consts::POINTER_WIDTH_BYTES,
-    arg_str=arg_str,
-    provider=probe_properties.provider.clone().unwrap(),
-    name=probe_properties.name.clone().unwrap()
+        bw = consts::POINTER_WIDTH_BYTES,
+        arg_str = arg_str,
+        provider = probe_properties.provider.clone().unwrap(),
+        name = probe_properties.name.clone().unwrap()
     );
     Some(asm_code)
 }
